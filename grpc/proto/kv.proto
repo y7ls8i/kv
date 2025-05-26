@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package kv;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/y7ls8i/kv/grpc/proto";
+
+message GetInput {
+  string key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+  bool ok = 2;
+}
+
+message SetInput {
+  string key = 1;
+  bytes value = 2;
+}
+
+message LengthResponse {
+  uint64 length = 1;
+}
+
+service KV {
+  rpc Get(GetInput) returns (GetResponse) {}
+  rpc Set(SetInput) returns (google.protobuf.Empty) {}
+  rpc Length(google.protobuf.Empty) returns (LengthResponse) {}
+  rpc Clear(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
