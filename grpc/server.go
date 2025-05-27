@@ -51,8 +51,11 @@ func (s kvServer) Subscribe(inp *proto.KeyInput, stream grpc.ServerStreamingServ
 		log.Printf("Unsubscribed key=%q id=%q", key, subID)
 	}(inp.GetKey(), subID)
 
-	go func() {
-		for change := range ch {
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case change := <-ch:
 			send := proto.Change{Value: change.Value}
 			switch change.Op {
 			case kv.OperationAdd:
@@ -64,13 +67,10 @@ func (s kvServer) Subscribe(inp *proto.KeyInput, stream grpc.ServerStreamingServ
 			}
 			if err := stream.Send(&send); err != nil {
 				log.Printf("Could not send stream data, error: %v\n", err)
+				return err
 			}
 		}
-	}()
-
-	<-stream.Context().Done()
-
-	return nil
+	}
 }
 
 func NewServer() *grpc.Server {
