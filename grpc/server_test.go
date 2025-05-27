@@ -18,7 +18,7 @@ import (
 )
 
 // setupTestServer creates an in-memory gRPC server for testing
-func setupTestServer(t *testing.T) (*grpc.Server, net.Listener, func()) {
+func setupTestServer(t *testing.T) (net.Listener, func()) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
@@ -30,7 +30,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, net.Listener, func()) {
 		}
 	}()
 
-	return grpcServer, lis, func() {
+	return lis, func() {
 		grpcServer.GracefulStop()
 		_ = lis.Close()
 	}
@@ -38,7 +38,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, net.Listener, func()) {
 
 func TestGet(t *testing.T) {
 	ctx := context.Background()
-	_, lis, cleanup := setupTestServer(t)
+	lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -68,7 +68,7 @@ func TestGet(t *testing.T) {
 
 func TestSet(t *testing.T) {
 	ctx := context.Background()
-	_, lis, cleanup := setupTestServer(t)
+	lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -92,7 +92,7 @@ func TestSet(t *testing.T) {
 
 func TestLength(t *testing.T) {
 	ctx := context.Background()
-	_, lis, cleanup := setupTestServer(t)
+	lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -121,7 +121,7 @@ func TestLength(t *testing.T) {
 
 func TestClear(t *testing.T) {
 	ctx := context.Background()
-	_, lis, cleanup := setupTestServer(t)
+	lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -136,22 +136,29 @@ func TestClear(t *testing.T) {
 	// Add some data
 	kv.Set("key1", []byte("value1"))
 	kv.Set("key2", []byte("value2"))
+	kv.Set("key3", []byte("value3"))
 
 	// Verify data exists
 	resp, err := client.Length(ctx, &emptypb.Empty{})
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(2), resp.Length, "Setup failed: length should be 2")
+	assert.Equal(t, uint64(3), resp.Length, "Setup failed: length should be 3")
+
+	// Delete and verify
+	_, err = client.Delete(ctx, &proto.KeyInput{Key: "key1"})
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(2), kv.Length(), "Clear failed: length should be 2")
+	value, ok := kv.Get("key1")
+	assert.False(t, ok, "Get should return false for deleted key")
+	assert.Nil(t, value, "Value should be nil for deleted key")
 
 	// Clear and verify
 	_, err = client.Clear(ctx, &emptypb.Empty{})
 	assert.NoError(t, err)
-	resp, err = client.Length(ctx, &emptypb.Empty{})
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(0), resp.Length, "Clear failed: length should be 0")
+	assert.Equal(t, uint64(0), kv.Length(), "Clear failed: length should be 0")
 }
 
 func TestSubscribe(t *testing.T) {
-	_, lis, cleanup := setupTestServer(t)
+	lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
