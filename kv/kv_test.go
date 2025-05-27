@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/y7ls8i/kv/kv"
@@ -146,4 +147,52 @@ func TestZeroValueKeyAndValue(t *testing.T) {
 	retrievedVal, ok = kv.Get(keyForNilValue)
 	assert.True(t, ok, "Expected key for nil value to be found")
 	assert.Nil(t, retrievedVal, "Expected nil value to be retrieved")
+}
+
+func TestSubscribe(t *testing.T) {
+	setup()
+
+	t.Run("Add, Update, Delete", func(t *testing.T) {
+		key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
+		id, ch := kv.Subscribe(key)
+
+		kv.Set(key, []byte("value1"))
+		change1 := <-ch
+		assert.Equal(t, kv.OperationAdd, change1.Op, "Expected add operation to be received")
+		assert.Equal(t, []byte("value1"), change1.Value, "Expected value1 to be received")
+
+		kv.Set(key, []byte("value2"))
+		change2 := <-ch
+		assert.Equal(t, kv.OperationUpdate, change2.Op, "Expected update operation to be received")
+		assert.Equal(t, []byte("value2"), change2.Value, "Expected value2 to be received")
+
+		kv.Delete(key)
+		change3 := <-ch
+		assert.Equal(t, kv.OperationDelete, change3.Op, "Expected delete operation to be received")
+		assert.Nil(t, change3.Value, "Expected nil value to be received")
+
+		kv.Unsubscribe(id)
+		kv.Set(key, []byte("value1"))
+		var received int
+		for range ch {
+			received++
+		}
+		assert.Equal(t, 0, received, "Expected 0 changes received after unsubscribed")
+	})
+
+	t.Run("Clear", func(t *testing.T) {
+		key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
+		id, ch := kv.Subscribe(key)
+		defer kv.Unsubscribe(id)
+
+		kv.Set(key, []byte("value1"))
+		change1 := <-ch
+		assert.Equal(t, kv.OperationAdd, change1.Op, "Expected add operation to be received")
+		assert.Equal(t, []byte("value1"), change1.Value, "Expected value1 to be received")
+
+		kv.Clear()
+		change2 := <-ch
+		assert.Equal(t, kv.OperationDelete, change2.Op, "Expected delete operation to be received")
+		assert.Nil(t, change2.Value, "Expected nil value to be received")
+	})
 }

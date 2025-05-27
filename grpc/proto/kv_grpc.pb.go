@@ -20,20 +20,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KV_Get_FullMethodName    = "/kv.KV/Get"
-	KV_Set_FullMethodName    = "/kv.KV/Set"
-	KV_Length_FullMethodName = "/kv.KV/Length"
-	KV_Clear_FullMethodName  = "/kv.KV/Clear"
+	KV_Get_FullMethodName       = "/kv.KV/Get"
+	KV_Set_FullMethodName       = "/kv.KV/Set"
+	KV_Delete_FullMethodName    = "/kv.KV/Delete"
+	KV_Length_FullMethodName    = "/kv.KV/Length"
+	KV_Clear_FullMethodName     = "/kv.KV/Clear"
+	KV_Subscribe_FullMethodName = "/kv.KV/Subscribe"
 )
 
 // KVClient is the client API for KV service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type KVClient interface {
-	Get(ctx context.Context, in *GetInput, opts ...grpc.CallOption) (*GetResponse, error)
+	Get(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*GetResponse, error)
 	Set(ctx context.Context, in *SetInput, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Delete(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Length(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LengthResponse, error)
 	Clear(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Subscribe(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Change], error)
 }
 
 type kVClient struct {
@@ -44,7 +48,7 @@ func NewKVClient(cc grpc.ClientConnInterface) KVClient {
 	return &kVClient{cc}
 }
 
-func (c *kVClient) Get(ctx context.Context, in *GetInput, opts ...grpc.CallOption) (*GetResponse, error) {
+func (c *kVClient) Get(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*GetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetResponse)
 	err := c.cc.Invoke(ctx, KV_Get_FullMethodName, in, out, cOpts...)
@@ -58,6 +62,16 @@ func (c *kVClient) Set(ctx context.Context, in *SetInput, opts ...grpc.CallOptio
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, KV_Set_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVClient) Delete(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, KV_Delete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,14 +98,35 @@ func (c *kVClient) Clear(ctx context.Context, in *emptypb.Empty, opts ...grpc.Ca
 	return out, nil
 }
 
+func (c *kVClient) Subscribe(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Change], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &KV_ServiceDesc.Streams[0], KV_Subscribe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[KeyInput, Change]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type KV_SubscribeClient = grpc.ServerStreamingClient[Change]
+
 // KVServer is the server API for KV service.
 // All implementations must embed UnimplementedKVServer
 // for forward compatibility.
 type KVServer interface {
-	Get(context.Context, *GetInput) (*GetResponse, error)
+	Get(context.Context, *KeyInput) (*GetResponse, error)
 	Set(context.Context, *SetInput) (*emptypb.Empty, error)
+	Delete(context.Context, *KeyInput) (*emptypb.Empty, error)
 	Length(context.Context, *emptypb.Empty) (*LengthResponse, error)
 	Clear(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	Subscribe(*KeyInput, grpc.ServerStreamingServer[Change]) error
 	mustEmbedUnimplementedKVServer()
 }
 
@@ -102,17 +137,23 @@ type KVServer interface {
 // pointer dereference when methods are called.
 type UnimplementedKVServer struct{}
 
-func (UnimplementedKVServer) Get(context.Context, *GetInput) (*GetResponse, error) {
+func (UnimplementedKVServer) Get(context.Context, *KeyInput) (*GetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
 func (UnimplementedKVServer) Set(context.Context, *SetInput) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Set not implemented")
+}
+func (UnimplementedKVServer) Delete(context.Context, *KeyInput) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
 func (UnimplementedKVServer) Length(context.Context, *emptypb.Empty) (*LengthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Length not implemented")
 }
 func (UnimplementedKVServer) Clear(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Clear not implemented")
+}
+func (UnimplementedKVServer) Subscribe(*KeyInput, grpc.ServerStreamingServer[Change]) error {
+	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
 }
 func (UnimplementedKVServer) mustEmbedUnimplementedKVServer() {}
 func (UnimplementedKVServer) testEmbeddedByValue()            {}
@@ -136,7 +177,7 @@ func RegisterKVServer(s grpc.ServiceRegistrar, srv KVServer) {
 }
 
 func _KV_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetInput)
+	in := new(KeyInput)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -148,7 +189,7 @@ func _KV_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{})
 		FullMethod: KV_Get_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(KVServer).Get(ctx, req.(*GetInput))
+		return srv.(KVServer).Get(ctx, req.(*KeyInput))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -167,6 +208,24 @@ func _KV_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{})
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KVServer).Set(ctx, req.(*SetInput))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KV_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KeyInput)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KV_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVServer).Delete(ctx, req.(*KeyInput))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -207,6 +266,17 @@ func _KV_Clear_Handler(srv interface{}, ctx context.Context, dec func(interface{
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KV_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(KeyInput)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(KVServer).Subscribe(m, &grpc.GenericServerStream[KeyInput, Change]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type KV_SubscribeServer = grpc.ServerStreamingServer[Change]
+
 // KV_ServiceDesc is the grpc.ServiceDesc for KV service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -223,6 +293,10 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KV_Set_Handler,
 		},
 		{
+			MethodName: "Delete",
+			Handler:    _KV_Delete_Handler,
+		},
+		{
 			MethodName: "Length",
 			Handler:    _KV_Length_Handler,
 		},
@@ -231,6 +305,12 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KV_Clear_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Subscribe",
+			Handler:       _KV_Subscribe_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "kv.proto",
 }

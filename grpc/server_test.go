@@ -2,26 +2,26 @@ package grpc_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	kvgrpc "github.com/y7ls8i/kv/grpc"
 	"github.com/y7ls8i/kv/grpc/proto"
 	"github.com/y7ls8i/kv/kv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-const bufSize = 1024 * 1024
-
-var lis *bufconn.Listener
-
 // setupTestServer creates an in-memory gRPC server for testing
-func setupTestServer(t *testing.T) (*grpc.Server, *bufconn.Listener, func()) {
-	lis = bufconn.Listen(bufSize)
+func setupTestServer(t *testing.T) (*grpc.Server, net.Listener, func()) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
 	grpcServer := kvgrpc.NewServer()
 
 	go func() {
@@ -32,13 +32,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, *bufconn.Listener, func()) {
 
 	return grpcServer, lis, func() {
 		grpcServer.GracefulStop()
-	}
-}
-
-// dialer creates a client connection to the in-memory server
-func dialer(lis *bufconn.Listener) func(context.Context, string) (net.Conn, error) {
-	return func(context.Context, string) (net.Conn, error) {
-		return lis.Dial()
+		_ = lis.Close()
 	}
 }
 
@@ -47,9 +41,9 @@ func TestGet(t *testing.T) {
 	_, lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(dialer(lis)), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		t.Fatalf("Failed to dial bufnet: %v", err)
+		t.Fatalf("Failed to dial grpc server: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -57,7 +51,7 @@ func TestGet(t *testing.T) {
 	kv.Clear()
 
 	t.Run("Get non-existent key", func(t *testing.T) {
-		resp, err := client.Get(ctx, &proto.GetInput{Key: "nonexistent"})
+		resp, err := client.Get(ctx, &proto.KeyInput{Key: "nonexistent"})
 		assert.NoError(t, err)
 		assert.False(t, resp.Ok, "Get should return false for non-existent key")
 		assert.Nil(t, resp.Value, "Value should be nil for non-existent key")
@@ -65,7 +59,7 @@ func TestGet(t *testing.T) {
 
 	t.Run("Get existing key", func(t *testing.T) {
 		kv.Set("key1", []byte("value1"))
-		resp, err := client.Get(ctx, &proto.GetInput{Key: "key1"})
+		resp, err := client.Get(ctx, &proto.KeyInput{Key: "key1"})
 		assert.NoError(t, err)
 		assert.True(t, resp.Ok, "Get should return true for existing key")
 		assert.Equal(t, []byte("value1"), resp.Value, "Value doesn't match")
@@ -77,9 +71,9 @@ func TestSet(t *testing.T) {
 	_, lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(dialer(lis)), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		t.Fatalf("Failed to dial bufnet: %v", err)
+		t.Fatalf("Failed to dial grpc server: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -101,9 +95,9 @@ func TestLength(t *testing.T) {
 	_, lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(dialer(lis)), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		t.Fatalf("Failed to dial bufnet: %v", err)
+		t.Fatalf("Failed to dial grpc server: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -130,9 +124,9 @@ func TestClear(t *testing.T) {
 	_, lis, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	conn, err := grpc.NewClient("passthrough:///bufnet", grpc.WithContextDialer(dialer(lis)), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		t.Fatalf("Failed to dial bufnet: %v", err)
+		t.Fatalf("Failed to dial grpc server: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -154,4 +148,59 @@ func TestClear(t *testing.T) {
 	resp, err = client.Length(ctx, &emptypb.Empty{})
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(0), resp.Length, "Clear failed: length should be 0")
+}
+
+func TestSubscribe(t *testing.T) {
+	_, lis, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("Failed to dial grpc server: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	client := proto.NewKVClient(conn)
+	kv.Clear()
+
+	key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stream, err := client.Subscribe(ctx, &proto.KeyInput{Key: key})
+	assert.NoError(t, err)
+
+	go func() {
+		i := 0
+		for {
+			resp, err := stream.Recv()
+			require.NoError(t, err, "Could not receive stream")
+
+			switch i {
+			case 0:
+				assert.Equal(t, proto.Operation_ADD, resp.GetOperation(), "Expected add operation to be received")
+				assert.Equal(t, []byte("value1"), resp.GetValue(), "Expected value1 to be received")
+			case 1:
+				assert.Equal(t, proto.Operation_UPDATE, resp.GetOperation(), "Expected update operation to be received")
+				assert.Equal(t, []byte("value2"), resp.GetValue(), "Expected value2 to be received")
+			case 2:
+				assert.Equal(t, proto.Operation_DELETE, resp.GetOperation(), "Expected delete operation to be received")
+				assert.Nil(t, resp.GetValue(), "Expected nil value to be received")
+
+				cancel()
+				return
+			}
+
+			i++
+		}
+	}()
+
+	time.Sleep(time.Millisecond) // make sure the subscription happens first before continuing test.
+
+	kv.Set(key, []byte("value1"))
+	kv.Set(key, []byte("value2"))
+	kv.Delete(key)
+
+	<-ctx.Done()
 }
