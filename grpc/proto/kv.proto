@@ -6,7 +6,7 @@ import "google/protobuf/empty.proto";
 
 option go_package = "github.com/y7ls8i/kv/grpc/proto";
 
-message GetInput {
+message KeyInput {
   string key = 1;
 }
 
@@ -24,9 +24,22 @@ message LengthResponse {
   uint64 length = 1;
 }
 
+enum Operation {
+  ADD = 0;
+  UPDATE = 1;
+  DELETE = 2;
+}
+
+message Change {
+  Operation operation = 1;
+  bytes value = 2;
+}
+
 service KV {
-  rpc Get(GetInput) returns (GetResponse) {}
+  rpc Get(KeyInput) returns (GetResponse) {}
   rpc Set(SetInput) returns (google.protobuf.Empty) {}
+  rpc Delete(KeyInput) returns (google.protobuf.Empty) {}
   rpc Length(google.protobuf.Empty) returns (LengthResponse) {}
   rpc Clear(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc Subscribe(KeyInput) returns (stream Change) {}
 }
