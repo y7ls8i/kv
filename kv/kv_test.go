@@ -3,6 +3,7 @@ package kv_test // Changed package name
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -194,5 +195,27 @@ func TestSubscribe(t *testing.T) {
 		change2 := <-ch
 		assert.Equal(t, kv.OperationDelete, change2.Op, "Expected delete operation to be received")
 		assert.Nil(t, change2.Value, "Expected nil value to be received")
+	})
+
+	t.Run("Slow consumer", func(t *testing.T) {
+		key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
+		id, ch := kv.Subscribe(key)
+		defer kv.Unsubscribe(id)
+
+		for i := uint64(0); i < kv.CHANGE_CHAN_CAP*2; i++ {
+			kv.Set(key, []byte(fmt.Sprintf("value%d", i)))
+		}
+
+		var count atomic.Uint64
+		go func() {
+			for range ch {
+				count.Add(1)
+			}
+		}()
+
+		time.Sleep(time.Millisecond) // wait until receiving all the notifications
+		kv.Unsubscribe(id)
+
+		assert.Equal(t, kv.CHANGE_CHAN_CAP, count.Load(), "Expected to only receive %d notifications", kv.CHANGE_CHAN_CAP)
 	})
 }

@@ -51,7 +51,7 @@ const (
 	OperationDelete
 )
 
-const CHANGE_CHAN_CAP = 10
+const CHANGE_CHAN_CAP uint64 = 10
 
 func Get(k Key) (Value, bool) {
 	storage.m.RLock()
