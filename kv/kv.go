@@ -97,7 +97,6 @@ func Clear() {
 	storage.m.Lock()
 	defer storage.m.Unlock()
 
-	// TODO limit the number of goroutines
 	for k := range storage.storage {
 		broadcastChange(OperationDelete, k, nil)
 	}
