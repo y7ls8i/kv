@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -10,9 +11,26 @@ import (
 	"github.com/y7ls8i/kv/kv"
 )
 
-type LengthResponse struct {
-	Length uint64 `json:"length"`
-}
+type (
+	Value          string // base64 of binary
+	LengthResponse struct {
+		Length uint64 `json:"length"`
+	}
+	GetResponse struct {
+		Value Value `json:"value"`
+		OK    bool  `json:"ok"`
+	}
+	SubscribeResponse struct {
+		Operation string `json:"operation"`
+		Value     Value  `json:"value"`
+	}
+)
+
+const (
+	OperationAdd     = "ADD"
+	OperationUpdate  = "UPDATE"
+	OperationUDelete = "DELETE"
+)
 
 func lengthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -29,7 +47,11 @@ func lengthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func setHandler(w http.ResponseWriter, r *http.Request, k string) {
-	body, err := io.ReadAll(r.Body)
+	defer func() {
+		_ = r.Body.Close()
+	}()
+
+	body, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, r.Body))
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return
@@ -43,17 +65,12 @@ func clearHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type GetResponse struct {
-	Value *string `json:"value,omitempty"`
-	OK    bool    `json:"ok"`
-}
-
 func getHandler(w http.ResponseWriter, r *http.Request, k string) {
 	var resp GetResponse
 	v, ok := kv.Get(k)
 	if ok {
 		resp.OK = true
-		resp.Value = addr(string(v))
+		resp.Value = Value(base64.StdEncoding.EncodeToString(v))
 	} else {
 		resp.OK = false
 	}
@@ -69,17 +86,6 @@ func getHandler(w http.ResponseWriter, r *http.Request, k string) {
 func deleteHandler(w http.ResponseWriter, r *http.Request, k string) {
 	kv.Delete(k)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-const (
-	OperationAdd     = "ADD"
-	OperationUpdate  = "UPDATE"
-	OperationUDelete = "DELETE"
-)
-
-type SubscribeResponse struct {
-	Operation string  `json:"operation"`
-	Value     *string `json:"value,omitempty"`
 }
 
 func subscribeHandler(w http.ResponseWriter, r *http.Request) {
@@ -120,11 +126,8 @@ func subscribeHandler(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case change := <-ch:
-			var sendValue *string
-			if len(change.Value) > 0 {
-				sendValue = addr(string(change.Value))
-			}
-			send := SubscribeResponse{Value: sendValue}
+
+			send := SubscribeResponse{Value: Value(base64.StdEncoding.EncodeToString(change.Value))}
 			switch change.Op {
 			case kv.OperationAdd:
 				send.Operation = OperationAdd
@@ -172,8 +175,4 @@ func NewServeMux() *http.ServeMux {
 	mux.HandleFunc("/length", lengthHandler)
 
 	return mux
-}
-
-func addr[T any](value T) *T {
-	return &value
 }
