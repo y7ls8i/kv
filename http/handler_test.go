@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,7 +45,7 @@ func TestGet(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.False(t, resp.OK, "Get should return false for non-existent key")
-		assert.Nil(t, resp.Value, "Value should be nil for non-existent key")
+		assert.Equal(t, "", string(resp.Value), "Value should be empty for non-existent key")
 	})
 
 	t.Run("Get existing key", func(t *testing.T) {
@@ -59,7 +60,9 @@ func TestGet(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.True(t, resp.OK, "Get should return true for existing key")
-		assert.Equal(t, "value1", *resp.Value, "Value doesn't match")
+		decoded, err := base64.StdEncoding.DecodeString(string(resp.Value))
+		assert.NoError(t, err, "Value should be base64 encoded")
+		assert.Equal(t, "value1", string(decoded), "Value doesn't match")
 	})
 }
 
@@ -69,7 +72,10 @@ func TestSet(t *testing.T) {
 
 	kv.Clear()
 
-	httpResp, err := http.Post(fmt.Sprintf("%s/values/key1", server.URL), "application/octet-stream", bytes.NewBuffer([]byte("value1")))
+	httpResp, err := http.Post(
+		fmt.Sprintf("%s/values/key1", server.URL),
+		"text/plain",
+		bytes.NewBuffer([]byte(base64.StdEncoding.EncodeToString([]byte("value1")))))
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, httpResp.StatusCode)
 
@@ -208,13 +214,17 @@ func TestSubscribe(t *testing.T) {
 		switch i {
 		case 0:
 			assert.Equal(t, kvhttp.OperationAdd, resp.Operation, "Expected add operation to be received")
-			assert.Equal(t, "value1", *resp.Value, "Expected value1 to be received")
+			decoded, err := base64.StdEncoding.DecodeString(string(resp.Value))
+			assert.NoError(t, err, "Value should be base64 encoded")
+			assert.Equal(t, "value1", string(decoded), "Expected value1 to be received")
 		case 1:
 			assert.Equal(t, kvhttp.OperationUpdate, resp.Operation, "Expected update operation to be received")
-			assert.Equal(t, "value2", *resp.Value, "Expected value2 to be received")
+			decoded, err := base64.StdEncoding.DecodeString(string(resp.Value))
+			assert.NoError(t, err, "Value should be base64 encoded")
+			assert.Equal(t, "value2", string(decoded), "Expected value2 to be received")
 		case 2:
 			assert.Equal(t, kvhttp.OperationUDelete, resp.Operation, "Expected delete operation to be received")
-			assert.Nil(t, resp.Value, "Expected nil value to be received")
+			assert.Equal(t, "", string(resp.Value), "Expected empty value to be received")
 		}
 
 		i++
