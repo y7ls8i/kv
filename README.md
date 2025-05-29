@@ -12,7 +12,7 @@ It is not meant as an internet-facing server, hence there is no authorization no
 
 ## gRPC
 
-See grpc/proto/kv.proto for details.
+See [grpc/proto/kv.proto](https://github.com/y7ls8i/kv/blob/main/grpc/proto/kv.proto) for details.
 
 ## HTTP
 
@@ -64,4 +64,4 @@ Subscribing for value changes for `mykey1`:
 
 Values are base64 encoded.
 
-See graphql/graph/schema.graphqls for details.
+See [graphql/graph/schema.graphqls](https://github.com/y7ls8i/kv/blob/main/graphql/graph/schema.graphqls) for details.
