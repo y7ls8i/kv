@@ -104,7 +104,7 @@ func Clear() {
 	storage.storage = map[Key]Value{}
 }
 
-func Subscribe(k Key) (id string, ch chan Change) {
+func Subscribe(k Key) (id string, ch <-chan Change) {
 	subs.m.Lock()
 	defer subs.m.Unlock()
 

@@ -1,0 +1,47 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Query {
+  get(key: String!): GetResponse!
+  length: LengthResponse!
+}
+
+type Mutation {
+  set(input: SetInput!): Boolean!
+  delete(key: String!): Boolean!
+  clear: Boolean!
+}
+
+type Subscription {
+  subscribe(key: String!): Change!
+}
+
+type GetResponse {
+  value: Value!
+  ok: Boolean!
+}
+
+input SetInput {
+  key: String!
+  value: Value!
+}
+
+type LengthResponse {
+  length: Int!
+}
+
+enum Operation {
+  ADD
+  UPDATE
+  DELETE
+}
+
+type Change {
+  operation: Operation!
+  value: Value!
+}
+
+scalar Value # base64 encoded string of binary

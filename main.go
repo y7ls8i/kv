@@ -6,8 +6,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/y7ls8i/kv/grpc"
-	kvHttp "github.com/y7ls8i/kv/http"
+	kvgraphql "github.com/y7ls8i/kv/graphql"
+	kvgrpc "github.com/y7ls8i/kv/grpc"
+	kvhttp "github.com/y7ls8i/kv/http"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -15,12 +16,13 @@ import (
 func main() {
 	grpcAddr := flag.String("grpc", "localhost:9901", "gRPC server listen address")
 	httpAddr := flag.String("http", "localhost:9902", "HTTP server listen address")
+	graphqlAddr := flag.String("graphql", "localhost:9903", "GraphQL server listen address")
 	flag.Parse()
 
 	go func() {
 		log.Printf("Starting gRPC server on %q", *grpcAddr)
 
-		grpcServer := grpc.NewServer()
+		grpcServer := kvgrpc.NewServer()
 
 		lis, err := net.Listen("tcp", *grpcAddr)
 		if err != nil {
@@ -35,7 +37,7 @@ func main() {
 	go func() {
 		log.Printf("Starting H2C server on %q", *httpAddr)
 
-		mux := kvHttp.NewServeMux()
+		mux := kvhttp.NewServeMux()
 
 		h2cServer := &http2.Server{}
 		handler := h2c.NewHandler(mux, h2cServer)
@@ -48,7 +50,21 @@ func main() {
 		}
 	}()
 
-	// TODO add GraphQL
+	go func() {
+		log.Printf("Starting GraphQL server on %q", *graphqlAddr)
+
+		mux := kvgraphql.NewServeMux()
+
+		h2cServer := &http2.Server{}
+		handler := h2c.NewHandler(mux, h2cServer)
+		server := &http.Server{
+			Addr:    *graphqlAddr,
+			Handler: handler,
+		}
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatalf("Could not start GraphQL server, error: %v", err)
+		}
+	}()
 
 	select {}
 }
