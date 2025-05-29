@@ -19,6 +19,8 @@ import (
 
 // setupTestServer creates an in-memory gRPC server for testing
 func setupTestServer(t *testing.T) (net.Listener, func()) {
+	t.Helper()
+
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 

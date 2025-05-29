@@ -20,6 +20,8 @@ import (
 
 // setupTestServer creates an in-memory gRPC server for testing
 func setupTestServer(t *testing.T) (*httptest.Server, func()) {
+	t.Helper()
+
 	mux := kvhttp.NewServeMux()
 
 	server := httptest.NewServer(mux)
@@ -131,21 +133,12 @@ func TestDelete(t *testing.T) {
 	kv.Set("key1", []byte("value1"))
 	kv.Set("key2", []byte("value2"))
 	kv.Set("key3", []byte("value3"))
-
-	var resp kvhttp.LengthResponse
-
-	// Verify data exists
-	httpResp, err := http.Get(fmt.Sprintf("%s/length", server.URL))
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, httpResp.StatusCode)
-	err = json.NewDecoder(httpResp.Body).Decode(&resp)
-	assert.NoError(t, err)
-	assert.Equal(t, uint64(3), resp.Length, "Setup failed: length should be 3")
+	assert.Equal(t, uint64(3), kv.Length(), "Setup failed: length should be 3")
 
 	// Delete
 	httpReq, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/values/key1", server.URL), http.NoBody)
 	assert.NoError(t, err)
-	httpResp, err = http.DefaultClient.Do(httpReq)
+	httpResp, err := http.DefaultClient.Do(httpReq)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, httpResp.StatusCode)
 

@@ -12,7 +12,7 @@ import (
 )
 
 type (
-	Value          string // base64 of binary
+	Value          string // base64 encoded string of binary
 	LengthResponse struct {
 		Length uint64 `json:"length"`
 	}
@@ -126,7 +126,6 @@ func subscribeHandler(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case change := <-ch:
-
 			send := SubscribeResponse{Value: Value(base64.StdEncoding.EncodeToString(change.Value))}
 			switch change.Op {
 			case kv.OperationAdd:
