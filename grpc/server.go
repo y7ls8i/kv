@@ -15,7 +15,7 @@ type kvServer struct {
 }
 
 func (s kvServer) Get(_ context.Context, inp *proto.KeyInput) (*proto.GetResponse, error) {
-	v, ok := kv.Get(inp.GetKey())
+	v, ok := kv.Get(inp.GetName(), inp.GetKey())
 	if !ok {
 		return &proto.GetResponse{Ok: false}, nil
 	}
@@ -24,32 +24,32 @@ func (s kvServer) Get(_ context.Context, inp *proto.KeyInput) (*proto.GetRespons
 }
 
 func (s kvServer) Set(_ context.Context, inp *proto.SetInput) (*emptypb.Empty, error) {
-	kv.Set(inp.GetKey(), inp.GetValue())
+	kv.Set(inp.GetName(), inp.GetKey(), inp.GetValue())
 	return nil, nil
 }
 
 func (s kvServer) Delete(_ context.Context, inp *proto.KeyInput) (*emptypb.Empty, error) {
-	kv.Delete(inp.GetKey())
+	kv.Delete(inp.GetName(), inp.GetKey())
 	return nil, nil
 }
 
-func (s kvServer) Length(context.Context, *emptypb.Empty) (*proto.LengthResponse, error) {
-	return &proto.LengthResponse{Length: kv.Length()}, nil
+func (s kvServer) Length(_ context.Context, inp *proto.NameInput) (*proto.LengthResponse, error) {
+	return &proto.LengthResponse{Length: kv.Length(inp.GetName())}, nil
 }
 
-func (s kvServer) Clear(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
-	kv.Clear()
+func (s kvServer) Clear(_ context.Context, inp *proto.NameInput) (*emptypb.Empty, error) {
+	kv.Clear(inp.GetName())
 	return nil, nil
 }
 
 func (s kvServer) Subscribe(inp *proto.KeyInput, stream grpc.ServerStreamingServer[proto.Change]) error {
-	subID, ch := kv.Subscribe(inp.GetKey())
-	log.Printf("Subscribed key=%q id=%q", inp.GetKey(), subID)
+	subID, ch := kv.Subscribe(inp.GetName(), inp.GetKey())
+	log.Printf("Subscribed name=%q key=%q id=%q", inp.GetName(), inp.GetKey(), subID)
 
-	defer func(key, subID string) {
-		kv.Unsubscribe(subID)
-		log.Printf("Unsubscribed key=%q id=%q", key, subID)
-	}(inp.GetKey(), subID)
+	defer func(name, key, subID string) {
+		kv.Unsubscribe(inp.GetName(), subID)
+		log.Printf("Unsubscribed name=%q key=%q id=%q", name, key, subID)
+	}(inp.GetName(), inp.GetKey(), subID)
 
 	for {
 		select {

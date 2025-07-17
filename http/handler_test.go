@@ -18,6 +18,8 @@ import (
 	"github.com/y7ls8i/kv/kv"
 )
 
+const name = "mykv"
+
 // setupTestServer creates an in-memory gRPC server for testing
 func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
@@ -35,10 +37,10 @@ func TestGet(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Get non-existent key", func(t *testing.T) {
-		httpResp, err := http.Get(fmt.Sprintf("%s/values/nonexistent", server.URL))
+		httpResp, err := http.Get(fmt.Sprintf("%s/values/%s/nonexistent", server.URL, name))
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 
@@ -51,9 +53,9 @@ func TestGet(t *testing.T) {
 	})
 
 	t.Run("Get existing key", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
+		kv.Set(name, "key1", []byte("value1"))
 
-		httpResp, err := http.Get(fmt.Sprintf("%s/values/key1", server.URL))
+		httpResp, err := http.Get(fmt.Sprintf("%s/values/%s/key1", server.URL, name))
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 
@@ -72,17 +74,17 @@ func TestSet(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	httpResp, err := http.Post(
-		fmt.Sprintf("%s/values/key1", server.URL),
+		fmt.Sprintf("%s/values/%s/key1", server.URL, name),
 		"text/plain",
 		bytes.NewBuffer([]byte(base64.StdEncoding.EncodeToString([]byte("value1")))))
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, httpResp.StatusCode)
 
 	// Verify the value was set
-	v, ok := kv.Get("key1")
+	v, ok := kv.Get(name, "key1")
 	assert.True(t, ok, "Set failed to store value")
 	assert.Equal(t, []byte("value1"), v, "Value doesn't match")
 }
@@ -91,10 +93,10 @@ func TestLength(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Empty storage", func(t *testing.T) {
-		httpResp, err := http.Get(fmt.Sprintf("%s/length", server.URL))
+		httpResp, err := http.Get(fmt.Sprintf("%s/length/%s", server.URL, name))
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 
@@ -107,10 +109,10 @@ func TestLength(t *testing.T) {
 	})
 
 	t.Run("Non-empty storage", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
-		kv.Set("key2", []byte("value2"))
+		kv.Set(name, "key1", []byte("value1"))
+		kv.Set(name, "key2", []byte("value2"))
 
-		httpResp, err := http.Get(fmt.Sprintf("%s/length", server.URL))
+		httpResp, err := http.Get(fmt.Sprintf("%s/length/%s", server.URL, name))
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 
@@ -127,43 +129,43 @@ func TestDelete(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	// Add some data
-	kv.Set("key1", []byte("value1"))
-	kv.Set("key2", []byte("value2"))
-	kv.Set("key3", []byte("value3"))
-	assert.Equal(t, uint64(3), kv.Length(), "Setup failed: length should be 3")
+	kv.Set(name, "key1", []byte("value1"))
+	kv.Set(name, "key2", []byte("value2"))
+	kv.Set(name, "key3", []byte("value3"))
+	assert.Equal(t, uint64(3), kv.Length(name), "Setup failed: length should be 3")
 
 	// Delete
-	httpReq, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/values/key1", server.URL), http.NoBody)
+	httpReq, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/values/%s/key1", server.URL, name), http.NoBody)
 	assert.NoError(t, err)
 	httpResp, err := http.DefaultClient.Do(httpReq)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, httpResp.StatusCode)
 
 	// Verify data deleted
-	assert.Equal(t, uint64(2), kv.Length(), "Delete failed: length should be 2")
-	value, ok := kv.Get("key1")
+	assert.Equal(t, uint64(2), kv.Length(name), "Delete failed: length should be 2")
+	value, ok := kv.Get(name, "key1")
 	assert.False(t, ok, "Get should return false for deleted key")
 	assert.Nil(t, value, "Value should be nil for deleted key")
 
 	// Clear
-	httpReq, err = http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/values/", server.URL), http.NoBody)
+	httpReq, err = http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/values/%s/", server.URL, name), http.NoBody)
 	assert.NoError(t, err)
 	httpResp, err = http.DefaultClient.Do(httpReq)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, httpResp.StatusCode)
 
 	// Verify data cleared
-	assert.Equal(t, uint64(0), kv.Length(), "Clear failed: length should be 0")
+	assert.Equal(t, uint64(0), kv.Length(name), "Clear failed: length should be 0")
 }
 
 func TestSubscribe(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
 
@@ -173,16 +175,16 @@ func TestSubscribe(t *testing.T) {
 	go func() {
 		time.Sleep(time.Millisecond) // make sure the subscription happens first before continuing test.
 
-		kv.Set(key, []byte("value1"))
-		kv.Set(key, []byte("value2"))
-		kv.Delete(key)
+		kv.Set(name, key, []byte("value1"))
+		kv.Set(name, key, []byte("value2"))
+		kv.Delete(name, key)
 
 		time.Sleep(time.Millisecond) // make sure handlers work before continuing test.
 
 		cancel()
 	}()
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/subscribe/%s", server.URL, key), nil)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/subscribe/%s/%s", server.URL, name, key), nil)
 	assert.NoError(t, err)
 	httpResp, err := http.DefaultClient.Do(httpReq)
 	assert.NoError(t, err)

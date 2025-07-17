@@ -35,8 +35,8 @@ type KVClient interface {
 	Get(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*GetResponse, error)
 	Set(ctx context.Context, in *SetInput, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Delete(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	Length(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LengthResponse, error)
-	Clear(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	Length(ctx context.Context, in *NameInput, opts ...grpc.CallOption) (*LengthResponse, error)
+	Clear(ctx context.Context, in *NameInput, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Subscribe(ctx context.Context, in *KeyInput, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Change], error)
 }
 
@@ -78,7 +78,7 @@ func (c *kVClient) Delete(ctx context.Context, in *KeyInput, opts ...grpc.CallOp
 	return out, nil
 }
 
-func (c *kVClient) Length(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LengthResponse, error) {
+func (c *kVClient) Length(ctx context.Context, in *NameInput, opts ...grpc.CallOption) (*LengthResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(LengthResponse)
 	err := c.cc.Invoke(ctx, KV_Length_FullMethodName, in, out, cOpts...)
@@ -88,7 +88,7 @@ func (c *kVClient) Length(ctx context.Context, in *emptypb.Empty, opts ...grpc.C
 	return out, nil
 }
 
-func (c *kVClient) Clear(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *kVClient) Clear(ctx context.Context, in *NameInput, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, KV_Clear_FullMethodName, in, out, cOpts...)
@@ -124,8 +124,8 @@ type KVServer interface {
 	Get(context.Context, *KeyInput) (*GetResponse, error)
 	Set(context.Context, *SetInput) (*emptypb.Empty, error)
 	Delete(context.Context, *KeyInput) (*emptypb.Empty, error)
-	Length(context.Context, *emptypb.Empty) (*LengthResponse, error)
-	Clear(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	Length(context.Context, *NameInput) (*LengthResponse, error)
+	Clear(context.Context, *NameInput) (*emptypb.Empty, error)
 	Subscribe(*KeyInput, grpc.ServerStreamingServer[Change]) error
 	mustEmbedUnimplementedKVServer()
 }
@@ -146,10 +146,10 @@ func (UnimplementedKVServer) Set(context.Context, *SetInput) (*emptypb.Empty, er
 func (UnimplementedKVServer) Delete(context.Context, *KeyInput) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedKVServer) Length(context.Context, *emptypb.Empty) (*LengthResponse, error) {
+func (UnimplementedKVServer) Length(context.Context, *NameInput) (*LengthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Length not implemented")
 }
-func (UnimplementedKVServer) Clear(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+func (UnimplementedKVServer) Clear(context.Context, *NameInput) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Clear not implemented")
 }
 func (UnimplementedKVServer) Subscribe(*KeyInput, grpc.ServerStreamingServer[Change]) error {
@@ -231,7 +231,7 @@ func _KV_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface
 }
 
 func _KV_Length_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(NameInput)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -243,13 +243,13 @@ func _KV_Length_Handler(srv interface{}, ctx context.Context, dec func(interface
 		FullMethod: KV_Length_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(KVServer).Length(ctx, req.(*emptypb.Empty))
+		return srv.(KVServer).Length(ctx, req.(*NameInput))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _KV_Clear_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(NameInput)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func _KV_Clear_Handler(srv interface{}, ctx context.Context, dec func(interface{
 		FullMethod: KV_Clear_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(KVServer).Clear(ctx, req.(*emptypb.Empty))
+		return srv.(KVServer).Clear(ctx, req.(*NameInput))
 	}
 	return interceptor(ctx, in, info, handler)
 }

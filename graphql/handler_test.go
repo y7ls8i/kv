@@ -19,6 +19,8 @@ import (
 	"github.com/y7ls8i/kv/kv"
 )
 
+const name = "mykv"
+
 // setupTestServer creates an in-memory gRPC server for testing
 func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
@@ -50,17 +52,17 @@ func TestGet(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Get non-existent key", func(t *testing.T) {
 		httpResp := postGraphQL(t, server, fmt.Sprintf(
 			`query {
-			  get(key: %q) {
+			  get(input: { name: %q, key: %q }) {
 				ok
 				value
 			  }
 			}`,
-			"nonexistent",
+			name, "nonexistent",
 		))
 
 		defer func() { _ = httpResp.Body.Close() }()
@@ -78,16 +80,16 @@ func TestGet(t *testing.T) {
 	})
 
 	t.Run("Get existing key", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
+		kv.Set(name, "key1", []byte("value1"))
 
 		httpResp := postGraphQL(t, server, fmt.Sprintf(
 			`query {
-			  get(key: %q) {
+			  get(input: { name: %q, key: %q }) {
 				ok
 				value
 			  }
 			}`,
-			"key1",
+			name, "key1",
 		))
 
 		defer func() { _ = httpResp.Body.Close() }()
@@ -111,18 +113,19 @@ func TestSet(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	_ = postGraphQL(t, server, fmt.Sprintf(
 		`mutation {
-		  set(input: { key: %q, value: %q })
+		  set(input: { name: %q, key: %q, value: %q })
 		}`,
+		name,
 		"key1",
 		base64.StdEncoding.EncodeToString([]byte("value1")),
 	))
 
 	// Verify the value was set
-	v, ok := kv.Get("key1")
+	v, ok := kv.Get(name, "key1")
 	assert.True(t, ok, "Set failed to store value")
 	assert.Equal(t, []byte("value1"), v, "Value doesn't match")
 }
@@ -131,16 +134,16 @@ func TestLength(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Empty storage", func(t *testing.T) {
-		httpResp := postGraphQL(t, server, `
+		httpResp := postGraphQL(t, server, fmt.Sprintf(`
 			query {
-			  length {
+			  length(name: %q) {
 				length
 			  }
 			}
-		`)
+		`, name))
 
 		defer func() { _ = httpResp.Body.Close() }()
 
@@ -157,16 +160,16 @@ func TestLength(t *testing.T) {
 	})
 
 	t.Run("Non-empty storage", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
-		kv.Set("key2", []byte("value2"))
+		kv.Set(name, "key1", []byte("value1"))
+		kv.Set(name, "key2", []byte("value2"))
 
-		httpResp := postGraphQL(t, server, `
+		httpResp := postGraphQL(t, server, fmt.Sprintf(`
 			query {
-			  length {
+			  length(name: %q) {
 				length
 			  }
 			}
-		`)
+		`, name))
 
 		defer func() { _ = httpResp.Body.Close() }()
 
@@ -187,43 +190,43 @@ func TestDelete(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	// Add some data
-	kv.Set("key1", []byte("value1"))
-	kv.Set("key2", []byte("value2"))
-	kv.Set("key3", []byte("value3"))
-	assert.Equal(t, uint64(3), kv.Length(), "Length should be 3")
+	kv.Set(name, "key1", []byte("value1"))
+	kv.Set(name, "key2", []byte("value2"))
+	kv.Set(name, "key3", []byte("value3"))
+	assert.Equal(t, uint64(3), kv.Length(name), "Length should be 3")
 
 	// Delete
 	_ = postGraphQL(t, server, fmt.Sprintf(
 		`mutation {
-		  delete(key: %q)
+		  delete(input: { name: %q, key: %q })
 		}`,
-		"key1",
+		name, "key1",
 	))
 
 	// Verify data deleted
-	assert.Equal(t, uint64(2), kv.Length(), "Delete failed: length should be 2")
-	value, ok := kv.Get("key1")
+	assert.Equal(t, uint64(2), kv.Length(name), "Delete failed: length should be 2")
+	value, ok := kv.Get(name, "key1")
 	assert.False(t, ok, "Get should return false for deleted key")
 	assert.Nil(t, value, "Value should be nil for deleted key")
 
 	// Clear
-	_ = postGraphQL(t, server, `mutation {
-		  clear
-		}`,
+	_ = postGraphQL(t, server, fmt.Sprintf(`mutation {
+		  clear(name: %q)
+		}`, name),
 	)
 
 	// Verify data cleared
-	assert.Equal(t, uint64(0), kv.Length(), "Clear failed: length should be 0")
+	assert.Equal(t, uint64(0), kv.Length(name), "Clear failed: length should be 0")
 }
 
 func TestSubscribe(t *testing.T) {
 	server, cleanup := setupTestServer(t)
 	defer cleanup()
 
-	kv.Clear()
+	kv.Clear(name)
 
 	key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
 
@@ -243,12 +246,12 @@ func TestSubscribe(t *testing.T) {
 	// start subscription
 	subscriptionQuery := fmt.Sprintf(`
 		subscription {
-		  subscribe(key:%q) {
+		  subscribe(input: { name: %q, key: %q }) {
 			operation
 			value
 		  }
 		}
-	`, key)
+	`, name, key)
 	startMsg := map[string]interface{}{
 		"type": "start",
 		"id":   fmt.Sprintf("%d", time.Now().UnixNano()),
@@ -310,9 +313,9 @@ func TestSubscribe(t *testing.T) {
 
 	time.Sleep(time.Millisecond) // make sure the subscription happens first before continuing test.
 
-	kv.Set(key, []byte("value1"))
-	kv.Set(key, []byte("value2"))
-	kv.Delete(key)
+	kv.Set(name, key, []byte("value1"))
+	kv.Set(name, key, []byte("value2"))
+	kv.Delete(name, key)
 
 	<-done
 }

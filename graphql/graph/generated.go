@@ -64,32 +64,32 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		Clear  func(childComplexity int) int
-		Delete func(childComplexity int, key string) int
+		Clear  func(childComplexity int, name string) int
+		Delete func(childComplexity int, input model.KeyInput) int
 		Set    func(childComplexity int, input model.SetInput) int
 	}
 
 	Query struct {
-		Get    func(childComplexity int, key string) int
-		Length func(childComplexity int) int
+		Get    func(childComplexity int, input model.KeyInput) int
+		Length func(childComplexity int, name string) int
 	}
 
 	Subscription struct {
-		Subscribe func(childComplexity int, key string) int
+		Subscribe func(childComplexity int, input model.KeyInput) int
 	}
 }
 
 type MutationResolver interface {
 	Set(ctx context.Context, input model.SetInput) (bool, error)
-	Delete(ctx context.Context, key string) (bool, error)
-	Clear(ctx context.Context) (bool, error)
+	Delete(ctx context.Context, input model.KeyInput) (bool, error)
+	Clear(ctx context.Context, name string) (bool, error)
 }
 type QueryResolver interface {
-	Get(ctx context.Context, key string) (*model.GetResponse, error)
-	Length(ctx context.Context) (*model.LengthResponse, error)
+	Get(ctx context.Context, input model.KeyInput) (*model.GetResponse, error)
+	Length(ctx context.Context, name string) (*model.LengthResponse, error)
 }
 type SubscriptionResolver interface {
-	Subscribe(ctx context.Context, key string) (<-chan *model.Change, error)
+	Subscribe(ctx context.Context, input model.KeyInput) (<-chan *model.Change, error)
 }
 
 type executableSchema struct {
@@ -151,7 +151,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			break
 		}
 
-		return e.complexity.Mutation.Clear(childComplexity), true
+		args, err := ec.field_Mutation_clear_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.Clear(childComplexity, args["name"].(string)), true
 
 	case "Mutation.delete":
 		if e.complexity.Mutation.Delete == nil {
@@ -163,7 +168,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Delete(childComplexity, args["key"].(string)), true
+		return e.complexity.Mutation.Delete(childComplexity, args["input"].(model.KeyInput)), true
 
 	case "Mutation.set":
 		if e.complexity.Mutation.Set == nil {
@@ -187,14 +192,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Query.Get(childComplexity, args["key"].(string)), true
+		return e.complexity.Query.Get(childComplexity, args["input"].(model.KeyInput)), true
 
 	case "Query.length":
 		if e.complexity.Query.Length == nil {
 			break
 		}
 
-		return e.complexity.Query.Length(childComplexity), true
+		args, err := ec.field_Query_length_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.Length(childComplexity, args["name"].(string)), true
 
 	case "Subscription.subscribe":
 		if e.complexity.Subscription.Subscribe == nil {
@@ -206,7 +216,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Subscription.Subscribe(childComplexity, args["key"].(string)), true
+		return e.complexity.Subscription.Subscribe(childComplexity, args["input"].(model.KeyInput)), true
 
 	}
 	return 0, false
@@ -216,6 +226,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputKeyInput,
 		ec.unmarshalInputSetInput,
 	)
 	first := true
@@ -350,26 +361,49 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 
 // region    ***************************** args.gotpl *****************************
 
-func (ec *executionContext) field_Mutation_delete_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+func (ec *executionContext) field_Mutation_clear_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Mutation_delete_argsKey(ctx, rawArgs)
+	arg0, err := ec.field_Mutation_clear_argsName(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
-	args["key"] = arg0
+	args["name"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Mutation_delete_argsKey(
+func (ec *executionContext) field_Mutation_clear_argsName(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
-	if tmp, ok := rawArgs["key"]; ok {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+	if tmp, ok := rawArgs["name"]; ok {
 		return ec.unmarshalNString2string(ctx, tmp)
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_delete_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_delete_argsInput(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_delete_argsInput(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (model.KeyInput, error) {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNKeyInput2githubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐKeyInput(ctx, tmp)
+	}
+
+	var zeroVal model.KeyInput
 	return zeroVal, nil
 }
 
@@ -422,19 +456,42 @@ func (ec *executionContext) field_Query___type_argsName(
 func (ec *executionContext) field_Query_get_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Query_get_argsKey(ctx, rawArgs)
+	arg0, err := ec.field_Query_get_argsInput(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
-	args["key"] = arg0
+	args["input"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Query_get_argsKey(
+func (ec *executionContext) field_Query_get_argsInput(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (model.KeyInput, error) {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNKeyInput2githubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐKeyInput(ctx, tmp)
+	}
+
+	var zeroVal model.KeyInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_length_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Query_length_argsName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["name"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Query_length_argsName(
 	ctx context.Context,
 	rawArgs map[string]any,
 ) (string, error) {
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
-	if tmp, ok := rawArgs["key"]; ok {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+	if tmp, ok := rawArgs["name"]; ok {
 		return ec.unmarshalNString2string(ctx, tmp)
 	}
 
@@ -445,23 +502,23 @@ func (ec *executionContext) field_Query_get_argsKey(
 func (ec *executionContext) field_Subscription_subscribe_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := ec.field_Subscription_subscribe_argsKey(ctx, rawArgs)
+	arg0, err := ec.field_Subscription_subscribe_argsInput(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
-	args["key"] = arg0
+	args["input"] = arg0
 	return args, nil
 }
-func (ec *executionContext) field_Subscription_subscribe_argsKey(
+func (ec *executionContext) field_Subscription_subscribe_argsInput(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (string, error) {
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
-	if tmp, ok := rawArgs["key"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
+) (model.KeyInput, error) {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNKeyInput2githubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐKeyInput(ctx, tmp)
 	}
 
-	var zeroVal string
+	var zeroVal model.KeyInput
 	return zeroVal, nil
 }
 
@@ -854,7 +911,7 @@ func (ec *executionContext) _Mutation_delete(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Delete(rctx, fc.Args["key"].(string))
+		return ec.resolvers.Mutation().Delete(rctx, fc.Args["input"].(model.KeyInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -909,7 +966,7 @@ func (ec *executionContext) _Mutation_clear(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Clear(rctx)
+		return ec.resolvers.Mutation().Clear(rctx, fc.Args["name"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -926,7 +983,7 @@ func (ec *executionContext) _Mutation_clear(ctx context.Context, field graphql.C
 	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Mutation_clear(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_clear(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
@@ -935,6 +992,17 @@ func (ec *executionContext) fieldContext_Mutation_clear(_ context.Context, field
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_clear_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -953,7 +1021,7 @@ func (ec *executionContext) _Query_get(ctx context.Context, field graphql.Collec
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Get(rctx, fc.Args["key"].(string))
+		return ec.resolvers.Query().Get(rctx, fc.Args["input"].(model.KeyInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1014,7 +1082,7 @@ func (ec *executionContext) _Query_length(ctx context.Context, field graphql.Col
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Length(rctx)
+		return ec.resolvers.Query().Length(rctx, fc.Args["name"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1031,7 +1099,7 @@ func (ec *executionContext) _Query_length(ctx context.Context, field graphql.Col
 	return ec.marshalNLengthResponse2ᚖgithubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐLengthResponse(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Query_length(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_length(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -1044,6 +1112,17 @@ func (ec *executionContext) fieldContext_Query_length(_ context.Context, field g
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LengthResponse", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_length_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -1193,7 +1272,7 @@ func (ec *executionContext) _Subscription_subscribe(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Subscription().Subscribe(rctx, fc.Args["key"].(string))
+		return ec.resolvers.Subscription().Subscribe(rctx, fc.Args["input"].(model.KeyInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -3205,6 +3284,40 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputKeyInput(ctx context.Context, obj any) (model.KeyInput, error) {
+	var it model.KeyInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"name", "key"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "name":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Name = data
+		case "key":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Key = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputSetInput(ctx context.Context, obj any) (model.SetInput, error) {
 	var it model.SetInput
 	asMap := map[string]any{}
@@ -3212,13 +3325,20 @@ func (ec *executionContext) unmarshalInputSetInput(ctx context.Context, obj any)
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"key", "value"}
+	fieldsInOrder := [...]string{"name", "key", "value"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
 			continue
 		}
 		switch k {
+		case "name":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Name = data
 		case "key":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
 			data, err := ec.unmarshalNString2string(ctx, v)
@@ -3944,6 +4064,11 @@ func (ec *executionContext) marshalNInt2int32(ctx context.Context, sel ast.Selec
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNKeyInput2githubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐKeyInput(ctx context.Context, v any) (model.KeyInput, error) {
+	res, err := ec.unmarshalInputKeyInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNLengthResponse2githubᚗcomᚋy7ls8iᚋkvᚋgraphqlᚋgraphᚋmodelᚐLengthResponse(ctx context.Context, sel ast.SelectionSet, v model.LengthResponse) graphql.Marshaler {

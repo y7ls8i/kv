@@ -14,8 +14,9 @@ import (
 	"github.com/y7ls8i/kv/kv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+const name = "mykv"
 
 // setupTestServer creates an in-memory gRPC server for testing
 func setupTestServer(t *testing.T) (net.Listener, func()) {
@@ -50,18 +51,18 @@ func TestGet(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	client := proto.NewKVClient(conn)
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Get non-existent key", func(t *testing.T) {
-		resp, err := client.Get(ctx, &proto.KeyInput{Key: "nonexistent"})
+		resp, err := client.Get(ctx, &proto.KeyInput{Name: name, Key: "nonexistent"})
 		assert.NoError(t, err)
 		assert.False(t, resp.Ok, "Get should return false for non-existent key")
 		assert.Nil(t, resp.Value, "Value should be nil for non-existent key")
 	})
 
 	t.Run("Get existing key", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
-		resp, err := client.Get(ctx, &proto.KeyInput{Key: "key1"})
+		kv.Set(name, "key1", []byte("value1"))
+		resp, err := client.Get(ctx, &proto.KeyInput{Name: name, Key: "key1"})
 		assert.NoError(t, err)
 		assert.True(t, resp.Ok, "Get should return true for existing key")
 		assert.Equal(t, []byte("value1"), resp.Value, "Value doesn't match")
@@ -80,14 +81,14 @@ func TestSet(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	client := proto.NewKVClient(conn)
-	kv.Clear()
+	kv.Clear(name)
 
 	// Test case: Set a value
-	_, err = client.Set(ctx, &proto.SetInput{Key: "key1", Value: []byte("value1")})
+	_, err = client.Set(ctx, &proto.SetInput{Name: name, Key: "key1", Value: []byte("value1")})
 	assert.NoError(t, err)
 
 	// Verify the value was set
-	v, ok := kv.Get("key1")
+	v, ok := kv.Get(name, "key1")
 	assert.True(t, ok, "Set failed to store value")
 	assert.Equal(t, []byte("value1"), v, "Value doesn't match")
 }
@@ -104,18 +105,18 @@ func TestLength(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	client := proto.NewKVClient(conn)
-	kv.Clear()
+	kv.Clear(name)
 
 	t.Run("Empty storage", func(t *testing.T) {
-		resp, err := client.Length(ctx, &emptypb.Empty{})
+		resp, err := client.Length(ctx, &proto.NameInput{Name: name})
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(0), resp.Length, "Length should be 0 for empty storage")
 	})
 
 	t.Run("Non-empty storage", func(t *testing.T) {
-		kv.Set("key1", []byte("value1"))
-		kv.Set("key2", []byte("value2"))
-		resp, err := client.Length(ctx, &emptypb.Empty{})
+		kv.Set(name, "key1", []byte("value1"))
+		kv.Set(name, "key2", []byte("value2"))
+		resp, err := client.Length(ctx, &proto.NameInput{Name: name})
 		assert.NoError(t, err)
 		assert.Equal(t, uint64(2), resp.Length, "Length should be 2")
 	})
@@ -133,30 +134,30 @@ func TestClear(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	client := proto.NewKVClient(conn)
-	kv.Clear()
+	kv.Clear(name)
 
 	// Add some data
-	kv.Set("key1", []byte("value1"))
-	kv.Set("key2", []byte("value2"))
-	kv.Set("key3", []byte("value3"))
+	kv.Set(name, "key1", []byte("value1"))
+	kv.Set(name, "key2", []byte("value2"))
+	kv.Set(name, "key3", []byte("value3"))
 
 	// Verify data exists
-	resp, err := client.Length(ctx, &emptypb.Empty{})
+	resp, err := client.Length(ctx, &proto.NameInput{Name: name})
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(3), resp.Length, "Setup failed: length should be 3")
 
 	// Delete and verify
-	_, err = client.Delete(ctx, &proto.KeyInput{Key: "key1"})
+	_, err = client.Delete(ctx, &proto.KeyInput{Name: name, Key: "key1"})
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(2), kv.Length(), "Clear failed: length should be 2")
-	value, ok := kv.Get("key1")
+	assert.Equal(t, uint64(2), kv.Length(name), "Clear failed: length should be 2")
+	value, ok := kv.Get(name, "key1")
 	assert.False(t, ok, "Get should return false for deleted key")
 	assert.Nil(t, value, "Value should be nil for deleted key")
 
 	// Clear and verify
-	_, err = client.Clear(ctx, &emptypb.Empty{})
+	_, err = client.Clear(ctx, &proto.NameInput{Name: name})
 	assert.NoError(t, err)
-	assert.Equal(t, uint64(0), kv.Length(), "Clear failed: length should be 0")
+	assert.Equal(t, uint64(0), kv.Length(name), "Clear failed: length should be 0")
 }
 
 func TestSubscribe(t *testing.T) {
@@ -170,14 +171,14 @@ func TestSubscribe(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	client := proto.NewKVClient(conn)
-	kv.Clear()
+	kv.Clear(name)
 
 	key := fmt.Sprintf("TestSubscribe%d", time.Now().UnixNano())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stream, err := client.Subscribe(ctx, &proto.KeyInput{Key: key})
+	stream, err := client.Subscribe(ctx, &proto.KeyInput{Name: name, Key: key})
 	assert.NoError(t, err)
 
 	go func() {
@@ -207,9 +208,9 @@ func TestSubscribe(t *testing.T) {
 
 	time.Sleep(time.Millisecond) // make sure the subscription happens first before continuing test.
 
-	kv.Set(key, []byte("value1"))
-	kv.Set(key, []byte("value2"))
-	kv.Delete(key)
+	kv.Set(name, key, []byte("value1"))
+	kv.Set(name, key, []byte("value2"))
+	kv.Delete(name, key)
 
 	<-ctx.Done()
 }

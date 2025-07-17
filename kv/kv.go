@@ -23,27 +23,33 @@ type (
 		ch  chan Change
 		key Key
 	}
-)
 
-var (
-	storage = struct {
+	kvStorage struct {
 		m       sync.RWMutex
 		storage map[Key]Value
-	}{
-		sync.RWMutex{},
-		map[Key]Value{},
 	}
 
-	subs = struct {
+	kvSubs struct {
 		m      sync.RWMutex
 		subs   map[Key][]*subscription  // subscriptions by key
 		subIDs map[string]*subscription // subscription by id
-	}{
-		sync.RWMutex{},
-		map[Key][]*subscription{},
-		map[string]*subscription{},
+	}
+
+	kv struct {
+		storage kvStorage
+		subs    kvSubs
+	}
+
+	kvs struct {
+		m   sync.RWMutex
+		kvs map[string]*kv
 	}
 )
+
+var all = kvs{
+	sync.RWMutex{},
+	map[string]*kv{},
+}
 
 const (
 	OperationAdd Operation = iota
@@ -53,60 +59,100 @@ const (
 
 const CHANGE_CHAN_CAP uint64 = 10
 
-func Get(k Key) (Value, bool) {
-	storage.m.RLock()
-	defer storage.m.RUnlock()
+func getOrCreate(name string) *kv {
+	all.m.RLock()
+	existing := all.kvs[name]
+	all.m.RUnlock()
 
-	v, ok := storage.storage[k]
+	if existing != nil {
+		return existing
+	}
+
+	newKV := &kv{
+		storage: kvStorage{
+			sync.RWMutex{},
+			map[Key]Value{},
+		},
+		subs: kvSubs{
+			sync.RWMutex{},
+			map[Key][]*subscription{},
+			map[string]*subscription{},
+		},
+	}
+
+	all.m.Lock()
+	all.kvs[name] = newKV
+	all.m.Unlock()
+
+	return newKV
+}
+
+func Get(name string, k Key) (Value, bool) {
+	kv := getOrCreate(name)
+
+	kv.storage.m.RLock()
+	defer kv.storage.m.RUnlock()
+
+	v, ok := kv.storage.storage[k]
 	return v, ok
 }
 
-func Set(k Key, v Value) {
-	storage.m.Lock()
-	defer storage.m.Unlock()
+func Set(name string, k Key, v Value) {
+	kv := getOrCreate(name)
+
+	kv.storage.m.Lock()
+	defer kv.storage.m.Unlock()
 
 	op := OperationAdd
-	if _, ok := storage.storage[k]; ok {
+	if _, ok := kv.storage.storage[k]; ok {
 		op = OperationUpdate
 	}
 
-	storage.storage[k] = v
+	kv.storage.storage[k] = v
 
 	copied := make(Value, len(v))
 	copy(copied, v)
-	broadcastChange(op, k, copied)
+	broadcastChange(name, op, k, copied)
 }
 
-func Delete(k Key) {
-	storage.m.Lock()
-	defer storage.m.Unlock()
+func Delete(name string, k Key) {
+	kv := getOrCreate(name)
 
-	delete(storage.storage, k)
+	kv.storage.m.Lock()
+	defer kv.storage.m.Unlock()
 
-	broadcastChange(OperationDelete, k, nil)
+	delete(kv.storage.storage, k)
+
+	broadcastChange(name, OperationDelete, k, nil)
 }
 
-func Length() uint64 {
-	storage.m.RLock()
-	defer storage.m.RUnlock()
+func Length(name string) uint64 {
+	kv := getOrCreate(name)
 
-	return uint64(len(storage.storage))
+	kv.storage.m.RLock()
+	defer kv.storage.m.RUnlock()
+
+	return uint64(len(kv.storage.storage))
 }
 
-func Clear() {
-	storage.m.Lock()
-	defer storage.m.Unlock()
+func Clear(name string) {
+	kv := getOrCreate(name)
 
-	for k := range storage.storage {
-		broadcastChange(OperationDelete, k, nil)
+	kv.storage.m.Lock()
+	defer kv.storage.m.Unlock()
+
+	for k := range kv.storage.storage {
+		broadcastChange(name, OperationDelete, k, nil)
 	}
 
-	storage.storage = map[Key]Value{}
+	kv.storage.storage = map[Key]Value{}
 }
 
-func Subscribe(k Key) (id string, ch <-chan Change) {
-	subs.m.Lock()
-	defer subs.m.Unlock()
+func Subscribe(name string, k Key) (id string, ch <-chan Change) {
+	kv := getOrCreate(name)
+
+	kv.subs.m.Lock()
+	defer kv.subs.m.Unlock()
 
 	sub := subscription{
 		id:  newSubID(),
@@ -114,40 +160,44 @@ func Subscribe(k Key) (id string, ch <-chan Change) {
 		key: k,
 	}
 
-	subs.subs[k] = append(subs.subs[k], &sub)
-	subs.subIDs[sub.id] = &sub
+	kv.subs.subs[k] = append(kv.subs.subs[k], &sub)
+	kv.subs.subIDs[sub.id] = &sub
 
 	return sub.id, sub.ch
 }
 
-func Unsubscribe(id string) {
-	subs.m.Lock()
-	defer subs.m.Unlock()
+func Unsubscribe(name string, id string) {
+	kv := getOrCreate(name)
 
-	sub, ok := subs.subIDs[id]
+	kv.subs.m.Lock()
+	defer kv.subs.m.Unlock()
+
+	sub, ok := kv.subs.subIDs[id]
 	if !ok {
 		return
 	}
 
 	close(sub.ch)
 
-	subs.subs[sub.key] = slices.DeleteFunc(subs.subs[sub.key], func(sub *subscription) bool {
+	kv.subs.subs[sub.key] = slices.DeleteFunc(kv.subs.subs[sub.key], func(sub *subscription) bool {
 		return sub.id == id
 	})
 
-	delete(subs.subIDs, id)
+	delete(kv.subs.subIDs, id)
 }
 
-func broadcastChange(op Operation, k Key, v Value) {
-	subs.m.RLock()
-	defer subs.m.RUnlock()
+func broadcastChange(name string, op Operation, k Key, v Value) {
+	kv := getOrCreate(name)
+
+	kv.subs.m.RLock()
+	defer kv.subs.m.RUnlock()
 
 	change := Change{
 		Op:    op,
 		Value: v,
 	}
 
-	for _, sub := range subs.subs[k] {
+	for _, sub := range kv.subs.subs[k] {
 		// if the consumer is too slow, we drop the change notification.
 		if len(sub.ch) < cap(sub.ch) {
 			sub.ch <- change

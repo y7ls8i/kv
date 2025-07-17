@@ -5,18 +5,18 @@ schema {
 }
 
 type Query {
-  get(key: String!): GetResponse!
-  length: LengthResponse!
+  get(input: KeyInput!): GetResponse!
+  length(name: String!): LengthResponse!
 }
 
 type Mutation {
   set(input: SetInput!): Boolean!
-  delete(key: String!): Boolean!
-  clear: Boolean!
+  delete(input: KeyInput!): Boolean!
+  clear(name: String!): Boolean!
 }
 
 type Subscription {
-  subscribe(key: String!): Change!
+  subscribe(input: KeyInput!): Change!
 }
 
 type GetResponse {
@@ -24,7 +24,13 @@ type GetResponse {
   ok: Boolean!
 }
 
+input KeyInput {
+  name: String!
+  key: String!
+}
+
 input SetInput {
+  name: String!
   key: String!
   value: Value!
 }

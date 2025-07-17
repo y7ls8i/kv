@@ -19,6 +19,11 @@ type GetResponse struct {
 	Ok    bool   `json:"ok"`
 }
 
+type KeyInput struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
 type LengthResponse struct {
 	Length int32 `json:"length"`
 }
@@ -30,6 +35,7 @@ type Query struct {
 }
 
 type SetInput struct {
+	Name  string `json:"name"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }

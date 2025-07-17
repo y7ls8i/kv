@@ -38,15 +38,23 @@ func lengthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pathParts := strings.Split(r.URL.Path, "/")
+
+	if len(pathParts) < 3 || strings.TrimSpace(pathParts[2]) == "" {
+		http.Error(w, "Name required!", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(pathParts[2])
+
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(LengthResponse{Length: kv.Length()})
+	err := json.NewEncoder(w).Encode(LengthResponse{Length: kv.Length(name)})
 	if err != nil {
 		http.Error(w, "Failed to encode JSON response", http.StatusInternalServerError)
 		return
 	}
 }
 
-func setHandler(w http.ResponseWriter, r *http.Request, k string) {
+func setHandler(w http.ResponseWriter, r *http.Request, name, key string) {
 	defer func() {
 		_ = r.Body.Close()
 	}()
@@ -56,18 +64,18 @@ func setHandler(w http.ResponseWriter, r *http.Request, k string) {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return
 	}
-	kv.Set(k, body)
+	kv.Set(name, key, body)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func clearHandler(w http.ResponseWriter, r *http.Request) {
-	kv.Clear()
+func clearHandler(w http.ResponseWriter, r *http.Request, name string) {
+	kv.Clear(name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func getHandler(w http.ResponseWriter, r *http.Request, k string) {
+func getHandler(w http.ResponseWriter, r *http.Request, name, key string) {
 	var resp GetResponse
-	v, ok := kv.Get(k)
+	v, ok := kv.Get(name, key)
 	if ok {
 		resp.OK = true
 		resp.Value = Value(base64.StdEncoding.EncodeToString(v))
@@ -83,8 +91,8 @@ func getHandler(w http.ResponseWriter, r *http.Request, k string) {
 	}
 }
 
-func deleteHandler(w http.ResponseWriter, r *http.Request, k string) {
-	kv.Delete(k)
+func deleteHandler(w http.ResponseWriter, r *http.Request, name, key string) {
+	kv.Delete(name, key)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -104,22 +112,27 @@ func subscribeHandler(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.Path, "/")
 
 	if len(pathParts) < 3 || strings.TrimSpace(pathParts[2]) == "" {
+		http.Error(w, "Name required!", http.StatusBadRequest)
+		return
+	}
+	if len(pathParts) < 4 || strings.TrimSpace(pathParts[3]) == "" {
 		http.Error(w, "Key required!", http.StatusBadRequest)
 		return
 	}
-	key := strings.TrimSpace(pathParts[2])
+	name := strings.TrimSpace(pathParts[2])
+	key := strings.TrimSpace(pathParts[3])
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	subID, ch := kv.Subscribe(key)
-	log.Printf("Subscribed key=%q id=%q", key, subID)
+	subID, ch := kv.Subscribe(name, key)
+	log.Printf("Subscribed name=%q key=%q id=%q", name, key, subID)
 
-	defer func(key, subID string) {
-		kv.Unsubscribe(subID)
-		log.Printf("Unsubscribed key=%q id=%q", key, subID)
-	}(key, subID)
+	defer func(name, key, subID string) {
+		kv.Unsubscribe(name, subID)
+		log.Printf("Unsubscribed name=%q key=%q id=%q", name, key, subID)
+	}(name, key, subID)
 
 	for {
 		select {
@@ -149,29 +162,35 @@ func NewServeMux() *http.ServeMux {
 
 	mux.HandleFunc("/values/", func(w http.ResponseWriter, r *http.Request) {
 		pathParts := strings.Split(r.URL.Path, "/")
-		if len(pathParts) >= 3 {
+		if len(pathParts) >= 4 {
 			switch r.Method {
 			case http.MethodGet:
-				getHandler(w, r, pathParts[2])
-				return
-			case http.MethodPost:
-				setHandler(w, r, pathParts[2])
-				return
-			case http.MethodDelete:
-				if pathParts[2] == "" {
-					clearHandler(w, r)
-				} else {
-					deleteHandler(w, r, pathParts[2])
+				if pathParts[2] != "" && pathParts[3] != "" {
+					getHandler(w, r, pathParts[2], pathParts[3])
+					return
 				}
-				return
+			case http.MethodPost:
+				if pathParts[2] != "" && pathParts[3] != "" {
+					setHandler(w, r, pathParts[2], pathParts[3])
+					return
+				}
+			case http.MethodDelete:
+				if pathParts[2] != "" {
+					if pathParts[3] == "" {
+						clearHandler(w, r, pathParts[2])
+					} else {
+						deleteHandler(w, r, pathParts[2], pathParts[3])
+					}
+					return
+				}
 			}
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusBadRequest)
 	})
 	mux.HandleFunc("/subscribe/", subscribeHandler)
-	mux.HandleFunc("/length", lengthHandler)
+	mux.HandleFunc("/length/", lengthHandler)
 
 	return mux
 }
