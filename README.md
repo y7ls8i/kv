@@ -20,12 +20,12 @@ Values are base64 encoded.
 
 Setting the value of `mykey1`:
 ```shell
-curl -v http://localhost:9902/values/mykey1 -d "c29tZXRoaW5n"
+curl -v http://localhost:9902/values/mykv1/mykey1 -d "c29tZXRoaW5n"
 ```
 
 Getting the value of `mykey1`:
 ```shell
-curl -v http://localhost:9902/values/mykey1
+curl -v http://localhost:9902/values/mykv1/mykey1
 ```
 ```json
 {"value":"c29tZXRoaW5n","ok":true}
@@ -33,17 +33,17 @@ curl -v http://localhost:9902/values/mykey1
 
 Deleting the value of `mykey1`:
 ```shell
-curl -v http://localhost:9902/values/mykey1 -X DELETE
+curl -v http://localhost:9902/values/mykv1/mykey1 -X DELETE
 ```
 
 Deleting all data:
 ```shell
-curl -v http://localhost:9902/values/ -X DELETE
+curl -v http://localhost:9902/values/mykv1/ -X DELETE
 ```
 
 Getting number of keys in storage:
 ```shell
-curl -v http://localhost:9902/length
+curl -v http://localhost:9902/length/mykv1
 ```
 ```json
 {"length":0}
@@ -52,7 +52,7 @@ curl -v http://localhost:9902/length
 Subscription for changes is supported using SSE (Server-Sent Events).
 Subscribing for value changes for `mykey1`:
 ```shell
- curl -v  http://localhost:9902/subscribe/mykey1
+ curl -v  http://localhost:9902/subscribe/mykv1/mykey1
 ```
 ```json
 {"operation":"ADD","value":"c29tZXRoaW5n"}
