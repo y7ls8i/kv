@@ -1,6 +1,6 @@
 # KV
 
-KV is a simple in-memory Key-Value server.
+KV is a simple subscribable in-memory Key-Value server.
 
 The **key** is a **string**.
 The **value** is any **bytes** data. The serialization and deserialization of the value is the responsibility of the client.
